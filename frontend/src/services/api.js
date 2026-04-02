@@ -3,37 +3,51 @@
  * All communication with Flask /process and /download endpoints
  */
 
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 /**
  * Submit document for processing.
  * @param {Object} params
  * @param {File|null}   params.file
  * @param {string}      params.text
+ * @param {Array}       params.authors  - [{ name, role, department, institution, email }, ...]
  * @param {string}      params.template  - ieee | springer | acm
  * @param {string}      params.format    - pdf | docx
  * @param {Object}      params.styling   - { fontFamily, titleSize, bodySize, lineSpacing }
  * @returns {Promise<Object>} API response JSON
  */
-export async function processDocument({ file, text, template, format, styling }) {
+export async function processDocument({
+  file,
+  text,
+  authors,
+  template,
+  format,
+  styling,
+}) {
   const form = new FormData();
 
   if (file) {
-    form.append('file', file);
+    form.append("file", file);
   } else {
-    form.append('text', text);
+    form.append("text", text);
   }
 
-  form.append('template', template);
-  form.append('format', format);
+  // Add authors as JSON
+  if (authors && authors.length > 0) {
+    form.append("authors", JSON.stringify(authors));
+  }
 
-  if (styling.fontFamily) form.append('fontFamily', styling.fontFamily);
-  if (styling.titleSize)  form.append('titleSize',  String(styling.titleSize));
-  if (styling.bodySize)   form.append('bodySize',   String(styling.bodySize));
-  if (styling.lineSpacing) form.append('lineSpacing', String(styling.lineSpacing));
+  form.append("template", template);
+  form.append("format", format);
+
+  if (styling.fontFamily) form.append("fontFamily", styling.fontFamily);
+  if (styling.titleSize) form.append("titleSize", String(styling.titleSize));
+  if (styling.bodySize) form.append("bodySize", String(styling.bodySize));
+  if (styling.lineSpacing)
+    form.append("lineSpacing", String(styling.lineSpacing));
 
   const response = await fetch(`${BASE_URL}/process`, {
-    method: 'POST',
+    method: "POST",
     body: form,
   });
 

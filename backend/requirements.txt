@@ -6,3 +6,13 @@ reportlab==4.2.2
 Pillow==10.3.0
 regex==2024.5.15
 werkzeug==3.0.3
+
+# AI & NLP Dependencies
+pdfplumber==0.10.3
+requests==2.31.0
+python-dotenv==1.0.0
+
+# Bonus Features (optional)
+sentence-transformers==3.0.0
+torch==2.2.0
+scikit-learn==1.4.2

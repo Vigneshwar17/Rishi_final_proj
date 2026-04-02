@@ -1,0 +1,223 @@
+"""
+DOCX Exporter module (BONUS).
+Generates professional DOCX formatted documents.
+"""
+
+import logging
+from typing import Dict, List, Optional
+from datetime import datetime
+
+logger = logging.getLogger(__name__)
+
+
+class DOCXExporter:
+    """
+    Export IEEE-formatted papers to DOCX with professional styling.
+    """
+
+    def __init__(self):
+        """Initialize DOCX exporter."""
+        try:
+            from docx import Document
+            from docx.shared import Pt, Inches, RGBColor
+            from docx.enum.text import WD_ALIGN_PARAGRAPH
+            self.Document = Document
+            self.Pt = Pt
+            self.Inches = Inches
+            self.RGBColor = RGBColor
+            self.WD_ALIGN_PARAGRAPH = WD_ALIGN_PARAGRAPH
+            self.has_docx = True
+            logger.info("python-docx loaded successfully")
+        except ImportError:
+            logger.warning("python-docx not installed. Install with: pip install python-docx")
+            self.has_docx = False
+
+    def export_paper(self, structured: Dict[str, any], output_path: str) -> Dict[str, any]:
+        """
+        Export structured paper to DOCX.
+        
+        Args:
+            structured: Structured paper dict from IEEE formatter
+            output_path: Path to save DOCX file
+            
+        Returns:
+            Dict with export status
+        """
+        if not self.has_docx:
+            return {'success': False, 'error': 'python-docx not installed'}
+
+        try:
+            doc = self.Document()
+
+            # Set default font
+            style = doc.styles['Normal']
+            font = style.font
+            font.name = 'Calibri'
+            font.size = self.Pt(11)
+
+            # Add title
+            self._add_title(doc, structured['title'])
+
+            # Add authors
+            if structured['authors']:
+                self._add_authors(doc, structured['authors'])
+
+            # Add sections
+            self._add_section(doc, "ABSTRACT", structured['abstract'])
+            self._add_section(doc, "I. INTRODUCTION", structured['introduction'])
+            self._add_section(doc, "II. METHODOLOGY", structured['methodology'])
+            self._add_section(doc, "III. RESULTS", structured['results'])
+
+            if structured['discussion']:
+                self._add_section(doc, "IV. DISCUSSION", structured['discussion'])
+
+            self._add_section(doc, "V. CONCLUSION", structured['conclusion'])
+            self._add_section(doc, "REFERENCES", structured['references'])
+
+            if structured['appendix']:
+                self._add_section(doc, "APPENDIX", structured['appendix'])
+
+            # Add footer with generation info
+            self._add_footer(doc)
+
+            # Save document
+            doc.save(output_path)
+
+            logger.info(f"DOCX exported successfully to {output_path}")
+
+            return {
+                'success': True,
+                'path': output_path,
+                'file_size': self._get_file_size(output_path)
+            }
+
+        except Exception as e:
+            logger.error(f"Error exporting DOCX: {str(e)}")
+            return {'success': False, 'error': str(e)}
+
+    def _add_title(self, doc, title: str):
+        """Add formatted title."""
+        title_para = doc.add_paragraph()
+        title_para.alignment = self.WD_ALIGN_PARAGRAPH.CENTER
+        title_run = title_para.add_run(title.upper())
+        title_run.font.size = self.Pt(14)
+        title_run.font.bold = True
+        title_run.font.name = 'Calibri'
+
+    def _add_authors(self, doc, authors: List[str]):
+        """Add formatted authors."""
+        authors_para = doc.add_paragraph()
+        authors_para.alignment = self.WD_ALIGN_PARAGRAPH.CENTER
+        authors_run = authors_para.add_run(", ".join(authors))
+        authors_run.font.size = self.Pt(10)
+        authors_run.font.italic = True
+
+    def _add_section(self, doc, section_name: str, content: str):
+        """Add formatted section."""
+        # Add section heading
+        heading = doc.add_heading(section_name, level=1)
+        heading_format = heading.style
+        heading_format.font.size = self.Pt(12)
+        heading_format.font.bold = True
+
+        # Add content
+        if content and 'No' not in content:
+            paragraphs = content.split('\n\n')
+            for para_text in paragraphs:
+                if para_text.strip():
+                    para = doc.add_paragraph(para_text.strip())
+                    para_format = para.paragraph_format
+                    para_format.line_spacing = 1.15
+                    para_format.space_after = self.Pt(6)
+
+        # Add spacing
+        doc.add_paragraph()
+
+    def _add_footer(self, doc):
+        """Add footer with generation information."""
+        footer_para = doc.add_paragraph()
+        footer_para.alignment = self.WD_ALIGN_PARAGRAPH.CENTER
+
+        footer_text = footer_para.add_run(
+            f"Generated by AI Research Paper Formatter on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        )
+        footer_text.font.size = self.Pt(8)
+        footer_text.font.italic = True
+        footer_text.font.color.rgb = self.RGBColor(128, 128, 128)
+
+    def _get_file_size(self, path: str) -> str:
+        """Get human-readable file size."""
+        import os
+        size = os.path.getsize(path)
+        for unit in ['B', 'KB', 'MB']:
+            if size < 1024:
+                return f"{size:.1f} {unit}"
+            size /= 1024
+        return f"{size:.1f} GB"
+
+    def export_with_metadata(self, structured: Dict[str, any], metadata: Dict, output_path: str) -> Dict[str, any]:
+        """
+        Export paper with extended metadata.
+        
+        Args:
+            structured: Structured paper dict
+            metadata: Extended metadata
+            output_path: Output path
+            
+        Returns:
+            Export status
+        """
+        if not self.has_docx:
+            return {'success': False, 'error': 'python-docx not installed'}
+
+        try:
+            doc = self.Document()
+
+            # Set document properties
+            core_props = doc.core_properties
+            core_props.title = structured['title']
+            core_props.subject = 'Research Paper'
+            core_props.author = ', '.join(structured['authors']) if structured['authors'] else 'Unknown'
+            core_props.created = datetime.now()
+
+            # Add content
+            self._add_title(doc, structured['title'])
+
+            if structured['authors']:
+                self._add_authors(doc, structured['authors'])
+
+            # Add metadata section
+            meta_para = doc.add_paragraph()
+            meta_para.add_run("Generated: ").bold = True
+            meta_para.add_run(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+
+            doc.add_paragraph()
+
+            # Add sections with numbering
+            sections_to_add = [
+                ("ABSTRACT", structured['abstract']),
+                ("I. INTRODUCTION", structured['introduction']),
+                ("II. METHODOLOGY", structured['methodology']),
+                ("III. RESULTS", structured['results']),
+                ("V. CONCLUSION", structured['conclusion']),
+                ("REFERENCES", structured['references']),
+            ]
+
+            if structured['discussion']:
+                sections_to_add.insert(4, ("IV. DISCUSSION", structured['discussion']))
+
+            for section_name, content in sections_to_add:
+                self._add_section(doc, section_name, content)
+
+            self._add_footer(doc)
+            doc.save(output_path)
+
+            return {
+                'success': True,
+                'path': output_path,
+                'file_size': self._get_file_size(output_path)
+            }
+
+        except Exception as e:
+            logger.error(f"Error in export_with_metadata: {str(e)}")
+            return {'success': False, 'error': str(e)}

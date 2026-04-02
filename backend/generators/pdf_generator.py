@@ -296,23 +296,55 @@ def _build_author_table(authors, styles, usable_w):
     Mirrors the classic academic paper multi-column author block.
     """
     n = len(authors)
-    # Cap at 3 columns per row; wrap to multiple rows if needed
-    cols_per_row = min(n, 3)
+    # Adaptive column layout: 1-2 authors per row (wider columns), 3+ authors fit better in multi-column
+    if n <= 2:
+        cols_per_row = n
+    elif n <= 4:
+        cols_per_row = 2
+    else:
+        cols_per_row = 3
+    
     col_w = usable_w / cols_per_row
 
     def author_cell(author):
         """Return a list of Paragraph flowables for one author cell."""
         cell = []
+        
+        # Author name - bold, larger font
         if author.name:
-            cell.append(_safe_para(f"<b>{_safe_text(author.name)}</b>", styles["author_cell_name"]))
+            cell.append(_safe_para(
+                f"<b>{_safe_text(author.name)}</b>",
+                styles["author_cell_name"]
+            ))
+        
+        # Role if present
         if author.role:
-            cell.append(_safe_para(_safe_text(author.role), styles["author_cell_body"]))
+            cell.append(_safe_para(
+                _safe_text(author.role),
+                styles["author_cell_body"]
+            ))
+        
+        # Department (bold-ish to distinguish from institution)
         if author.department:
-            cell.append(_safe_para(_safe_text(author.department), styles["author_cell_body"]))
+            cell.append(_safe_para(
+                f"<b>{_safe_text(author.department)}</b>",
+                styles["author_cell_body"]
+            ))
+        
+        # Institution affiliation
         if author.institution:
-            cell.append(_safe_para(_safe_text(author.institution), styles["author_cell_body"]))
+            cell.append(_safe_para(
+                _safe_text(author.institution),
+                styles["author_cell_body"]
+            ))
+        
+        # Email - italic for distinction
         if author.email:
-            cell.append(_safe_para(f"<i>{_safe_text(author.email)}</i>", styles["author_cell_body"]))
+            cell.append(_safe_para(
+                f"<i>{_safe_text(author.email)}</i>",
+                styles["author_cell_body"]
+            ))
+        
         return cell if cell else [Spacer(1, 1)]
 
     # Split authors into groups of cols_per_row
@@ -330,12 +362,14 @@ def _build_author_table(authors, styles, usable_w):
     tbl.setStyle(TableStyle([
         ("VALIGN",        (0, 0), (-1, -1), "TOP"),
         ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
-        ("TOPPADDING",    (0, 0), (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ("LEFTPADDING",   (0, 0), (-1, -1), 6),
-        ("RIGHTPADDING",  (0, 0), (-1, -1), 6),
+        ("TOPPADDING",    (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 8),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 8),
         # Thin vertical dividers between authors
-        ("LINEBEFORE",    (1, 0), (-1, -1), 0.4, colors.HexColor("#cccccc")),
+        ("LINEBEFORE",    (1, 0), (-1, -1), 0.5, colors.HexColor("#dddddd")),
+        # Bottom border for author row
+        ("LINEBELOW",     (0, -1), (-1, -1), 0.5, colors.HexColor("#cccccc")),
     ]))
     return tbl
 
@@ -409,18 +443,20 @@ def _build_styles(cfg, font_family, title_size, body_size, line_spacing):
         "author_cell_name": ParagraphStyle(
             "author_cell_name",
             fontName=cfg["font_bold"],
-            fontSize=body_size + 1,
-            leading=(body_size + 1) * 1.3,
+            fontSize=body_size + 1.5,
+            leading=(body_size + 1.5) * 1.4,
             alignment=TA_CENTER,
-            spaceAfter=2,
+            spaceAfter=3,
+            textColor=colors.HexColor("#000000"),
         ),
         "author_cell_body": ParagraphStyle(
             "author_cell_body",
             fontName=font_family,
             fontSize=body_size - 0.5,
-            leading=(body_size - 0.5) * 1.35,
+            leading=(body_size - 0.5) * 1.4,
             alignment=TA_CENTER,
-            spaceAfter=1,
+            spaceAfter=1.5,
+            textColor=colors.HexColor("#333333"),
         ),
     }
     return styles

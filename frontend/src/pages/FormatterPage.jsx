@@ -1,12 +1,13 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import Navbar from '../components/Navbar.jsx';
-import InputPanel from '../components/InputPanel.jsx';
-import ConfigPanel from '../components/ConfigPanel.jsx';
-import ResultPanel from '../components/ResultPanel.jsx';
-import { processDocument, checkHealth } from '../services/api.js';
+import React, { useState, useEffect, useCallback } from "react";
+import Navbar from "../components/Navbar.jsx";
+import InputPanel from "../components/InputPanel.jsx";
+import AuthorPanel from "../components/AuthorPanel.jsx";
+import ConfigPanel from "../components/ConfigPanel.jsx";
+import ResultPanel from "../components/ResultPanel.jsx";
+import { processDocument, checkHealth } from "../services/api.js";
 
 const DEFAULT_STYLING = {
-  fontFamily: 'Times New Roman',
+  fontFamily: "Times New Roman",
   titleSize: 20,
   bodySize: 10,
   lineSpacing: 1.15,
@@ -14,13 +15,24 @@ const DEFAULT_STYLING = {
 
 export default function FormatterPage() {
   // Input state
-  const [inputMode, setInputMode] = useState('file'); // 'file' | 'text'
+  const [inputMode, setInputMode] = useState("file"); // 'file' | 'text'
   const [file, setFile] = useState(null);
-  const [rawText, setRawText] = useState('');
+  const [rawText, setRawText] = useState("");
+
+  // Author state
+  const [authors, setAuthors] = useState([
+    {
+      name: "",
+      role: "Dr.",
+      department: "",
+      institution: "",
+      email: "",
+    },
+  ]);
 
   // Config state
-  const [template, setTemplate] = useState('ieee');
-  const [outputFormat, setOutputFormat] = useState('pdf');
+  const [template, setTemplate] = useState("ieee");
+  const [outputFormat, setOutputFormat] = useState("pdf");
   const [styling, setStyling] = useState(DEFAULT_STYLING);
 
   // Processing state
@@ -33,10 +45,13 @@ export default function FormatterPage() {
   const [backendOnline, setBackendOnline] = useState(null);
 
   useEffect(() => {
-    checkHealth().then(ok => setBackendOnline(ok));
+    checkHealth().then((ok) => setBackendOnline(ok));
   }, []);
 
-  const canSubmit = (inputMode === 'file' ? !!file : rawText.trim().length > 20) && !loading;
+  const canSubmit =
+    (inputMode === "file" ? !!file : rawText.trim().length > 20) &&
+    !loading &&
+    authors.some((a) => a.name && a.email);
 
   // Simulate progress while waiting for response
   const startFakeProgress = useCallback(() => {
@@ -63,8 +78,9 @@ export default function FormatterPage() {
 
     try {
       const data = await processDocument({
-        file: inputMode === 'file' ? file : null,
-        text: inputMode === 'text' ? rawText : '',
+        file: inputMode === "file" ? file : null,
+        text: inputMode === "text" ? rawText : "",
+        authors: authors.filter((a) => a.name && a.email),
         template,
         format: outputFormat,
         styling,
@@ -76,11 +92,13 @@ export default function FormatterPage() {
       if (data.success) {
         setTimeout(() => setResult(data), 300);
       } else {
-        setError(data.error || 'Unknown error from server.');
+        setError(data.error || "Unknown error from server.");
       }
     } catch (err) {
       clearInterval(progressId);
-      setError(err.message || 'Failed to connect to backend. Is the server running?');
+      setError(
+        err.message || "Failed to connect to backend. Is the server running?",
+      );
     } finally {
       setTimeout(() => {
         setLoading(false);
@@ -93,7 +111,7 @@ export default function FormatterPage() {
     setResult(null);
     setError(null);
     setFile(null);
-    setRawText('');
+    setRawText("");
     setProgress(0);
   };
 
@@ -118,19 +136,23 @@ export default function FormatterPage() {
 
         {/* Backend status */}
         {backendOnline === false && (
-          <div className="alert alert-error" style={{ marginBottom: '1.5rem' }}>
-            🔴 Backend server is offline. Please start the Flask server on port 5000 before submitting.
+          <div className="alert alert-error" style={{ marginBottom: "1.5rem" }}>
+            🔴 Backend server is offline. Please start the Flask server on port
+            5000 before submitting.
           </div>
         )}
         {backendOnline === true && (
-          <div className="alert alert-success" style={{ marginBottom: '1.5rem' }}>
+          <div
+            className="alert alert-success"
+            style={{ marginBottom: "1.5rem" }}
+          >
             🟢 Backend connected and ready.
           </div>
         )}
 
         {/* Error */}
         {error && (
-          <div className="alert alert-error" style={{ marginBottom: '1.5rem' }}>
+          <div className="alert alert-error" style={{ marginBottom: "1.5rem" }}>
             ❌ {error}
           </div>
         )}
@@ -138,18 +160,30 @@ export default function FormatterPage() {
         {/* Main workspace */}
         {!result ? (
           <div className="workspace">
-            {/* Left: Input */}
-            <InputPanel
-              inputMode={inputMode} setInputMode={setInputMode}
-              file={file} setFile={setFile}
-              rawText={rawText} setRawText={setRawText}
-            />
+            {/* Left Column: Input + Author (Stacked) */}
+            <div className="workspace-left">
+              {/* Top: Input */}
+              <InputPanel
+                inputMode={inputMode}
+                setInputMode={setInputMode}
+                file={file}
+                setFile={setFile}
+                rawText={rawText}
+                setRawText={setRawText}
+              />
 
-            {/* Right: Config */}
+              {/* Bottom: Author Details */}
+              <AuthorPanel authors={authors} setAuthors={setAuthors} />
+            </div>
+
+            {/* Right Column: Config */}
             <ConfigPanel
-              template={template} setTemplate={setTemplate}
-              outputFormat={outputFormat} setOutputFormat={setOutputFormat}
-              styling={styling} setStyling={setStyling}
+              template={template}
+              setTemplate={setTemplate}
+              outputFormat={outputFormat}
+              setOutputFormat={setOutputFormat}
+              styling={styling}
+              setStyling={setStyling}
               onSubmit={handleSubmit}
               loading={loading}
               progress={progress}
@@ -162,7 +196,8 @@ export default function FormatterPage() {
       </main>
 
       <footer className="footer">
-        AI Research Paper Formatter &nbsp;·&nbsp; Built with <span>NLP + ReportLab + python-docx</span>
+        AI Research Paper Formatter &nbsp;·&nbsp; Built with{" "}
+        <span>NLP + ReportLab + python-docx</span>
       </footer>
     </div>
   );

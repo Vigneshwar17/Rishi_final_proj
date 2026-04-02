@@ -76,22 +76,53 @@ def generate_docx(doc_data, output_path: str, template: str = "ieee", styling: d
 
     # ── Authors ───────────────────────────────────────────
     if doc_data.authors:
-        author_para = doc.add_paragraph()
-        author_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        author_texts = []
         for author in doc_data.authors:
-            parts = []
+            # Author name (bold, center)
             if author.name:
-                parts.append(author.name)
+                name_para = doc.add_paragraph()
+                name_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                name_run = name_para.add_run(author.name)
+                name_run.bold = True
+                name_run.font.size = Pt(cfg["author_size"])
+                name_run.font.name = font_name
+            
+            # Role (if present)
+            if author.role:
+                role_para = doc.add_paragraph()
+                role_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                role_run = role_para.add_run(author.role)
+                role_run.font.size = Pt(cfg["author_size"] - 1)
+                role_run.font.name = font_name
+                role_para.paragraph_format.space_before = Pt(2)
+                role_para.paragraph_format.space_after = Pt(2)
+            
+            # Department (if present)
+            if author.department:
+                dept_para = doc.add_paragraph()
+                dept_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                dept_run = dept_para.add_run(author.department)
+                dept_run.font.size = Pt(cfg["author_size"] - 1)
+                dept_run.font.name = font_name
+                dept_para.paragraph_format.space_after = Pt(2)
+            
+            # Institution affiliation
             if author.institution:
-                parts.append(author.institution)
+                inst_para = doc.add_paragraph()
+                inst_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                inst_run = inst_para.add_run(author.institution)
+                inst_run.font.size = Pt(cfg["author_size"] - 1)
+                inst_run.font.name = font_name
+                inst_para.paragraph_format.space_after = Pt(2)
+            
+            # Email (italic, small)
             if author.email:
-                parts.append(author.email)
-            author_texts.append(", ".join(parts))
-        run = author_para.add_run(" | ".join(author_texts))
-        run.italic = True
-        run.font.size = Pt(cfg["author_size"])
-        run.font.name = font_name
+                email_para = doc.add_paragraph()
+                email_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                email_run = email_para.add_run(author.email)
+                email_run.italic = True
+                email_run.font.size = Pt(cfg["author_size"] - 2)
+                email_run.font.name = font_name
+                email_para.paragraph_format.space_after = Pt(8)
 
     # ── Abstract ──────────────────────────────────────────
     if doc_data.abstract:

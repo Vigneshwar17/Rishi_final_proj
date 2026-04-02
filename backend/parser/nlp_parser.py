@@ -238,105 +238,253 @@ class NLPParser:
         """
         Parse entries like:
           'Monikapreethi S K, Dept CCE, Rajalakshmi Institute, Chennai, India, email@x.com'
-        Strategy: split on comma, first part = name, last email token = email,
-        parts with affiliation keywords = institution/department.
+        Strategy: split on comma, extract email first, then intelligently classify remaining parts.
         """
         authors = []
         for line in lines:
             if not line.strip():
                 continue
+            
             parts = [p.strip() for p in line.split(',')]
             author = Author()
+            
+            # Step 1: Extract email
             email_match = RE_EMAIL.search(line)
             if email_match:
                 author.email = email_match.group(0)
-
-            # First part that looks like a name (2-4 words, no digits, Title Case)
+            
+            # Step 2: Classify each part
+            name_candidates = []
+            dept_candidates = []
+            inst_candidates = []
+            role_candidates = []
+            
             for part in parts:
-                words = part.split()
-                if (
-                    2 <= len(words) <= 4
-                    and not re.search(r'\d', part)
-                    and part and part[0].isupper()
-                    and not RE_EMAIL.search(part)
-                    and not RE_AFFILIATION_KEYWORDS.search(part)
-                    and not RE_LOCATION.search(part)
-                ):
-                    author.name = part
-                    break
-
-            # Parts with affiliation keywords
-            dept_found = False
-            for part in parts:
-                if RE_AFFILIATION_KEYWORDS.search(part) and not RE_EMAIL.search(part):
-                    if not dept_found and 'department' in part.lower():
-                        author.department = part
-                        dept_found = True
-                    elif not author.institution:
-                        author.institution = part
+                if not part:
+                    continue
+                if RE_EMAIL.search(part) or author.email and author.email in part:
+                    continue  # Skip email part
+                
+                lower_part = part.lower()
+                
+                # Skip labels and metadata
+                if re.match(r'(?i)^(author|title|abstract|keywords?|index\s+terms?|introduction|mail|email|phone)$', lower_part):
+                    continue
+                
+                # Check what this part is
+                if RE_LOCATION.search(part):
+                    continue  # Skip locations/cities
+                
+                if any(kw in lower_part for kw in ['department', 'dept', 'school', 'faculty', 'division']):
+                    dept_candidates.append(part)
+                elif RE_AFFILIATION_KEYWORDS.search(part):
+                    inst_candidates.append(part)
+                elif self._looks_like_name(part):
+                    # Extract name, separating any role prefix
+                    cleaned_name, extracted_role = self._extract_role_from_name(part)
+                    if cleaned_name:
+                        name_candidates.append(cleaned_name)
+                    if extracted_role and not any(kw in lower_part.lower() for kw in ['department', 'dept']):
+                        role_candidates.append(extracted_role)
+            
+            # Step 3: Assign to author fields (prefer first occurrence)
+            if name_candidates:
+                author.name = self._fix_name_spacing(name_candidates[0])
+            if role_candidates:
+                author.role = role_candidates[0]
+            if dept_candidates:
+                author.department = dept_candidates[0]
+            if inst_candidates:
+                author.institution = inst_candidates[0]
 
             if author.name or author.email:
                 authors.append(author)
+        
         return authors
+    
+    def _extract_role_from_name(self, text: str) -> tuple:
+        """
+        Extract role prefix from name.
+        E.g., "Dr. Samidha Sharma" -> ("Samidha Sharma", "Dr.")
+        E.g., "Prof. John Doe" -> ("John Doe", "Prof.")
+        """
+        role_prefixes = [
+            r'^\s*(Dr\.?|Prof\.?|Professor|Dr\.-Ing\.?|Dipl\.?-Ing\.?)\s+',
+            r'^\s*(Associate\s+Professor|Assistant\s+Professor|Asst\.?\s+Prof\.?)\s+',
+        ]
+        
+        for pattern in role_prefixes:
+            match = re.match(pattern, text, re.IGNORECASE)
+            if match:
+                role = match.group(1).strip()
+                name = text[match.end():].strip()
+                return name, role
+        
+        return text, ""
+    
+    def _looks_like_name(self, text: str) -> bool:
+        """Check if text looks like a person name."""
+        if not text:
+            return False
+        words = text.split()
+        if len(words) < 2 or len(words) > 4:
+            return False
+        if re.search(r'\d', text):
+            return False
+        if not text[0].isupper():
+            return False
+        if RE_EMAIL.search(text):
+            return False
+        if RE_AFFILIATION_KEYWORDS.search(text):
+            return False
+        return True
+    
+    def _fix_name_spacing(self, name: str) -> str:
+        """
+        Fix names with missing spaces.
+        E.g., "SamidhaShrama" -> "Samidha Shrama"
+        E.g., "Samidhasharma" -> "Samidha Sharma"
+        Uses multiple strategies for detecting word boundaries in names.
+        """
+        if not name or len(name) < 3:
+            return name
+        
+        # Already has spaces?
+        if ' ' in name:
+            return name
+        
+        # Strategy 1: CamelCase pattern (lowercase followed by uppercase)
+        # E.g., "JohnSmith" -> "John Smith"
+        if re.search(r'[a-z][A-Z]', name):
+            fixed = re.sub(r'([a-z])([A-Z])', r'\1 \2', name)
+            return fixed
+        
+        # Strategy 2: All one case but looks like compound name
+        # For names like "Samidhasharma", try common split points
+        if name[0].isupper() and len(name) > 5:
+            # Common Indian name pattern: first name 5-6 chars, surname 4-6 chars
+            # Try splitting at 5 characters first
+            candidates = []
+            
+            # Try typical split points for compound names
+            for split_pos in [4, 5, 6, 7]:
+                if 2 <= split_pos < len(name) - 1:
+                    left = name[:split_pos]
+                    right = name[split_pos:]
+                    # Both parts should look like valid name segments
+                    if left and right and len(left) >= 2 and len(right) >= 2:
+                        # Prefer splits that end with typical vowels (a, i)
+                        if left.lower().endswith(('a', 'i', 'e')):
+                            # Capitalize the second part
+                            right_capitalized = right[0].upper() + right[1:] if len(right) > 0 else right
+                            candidates.append((split_pos, f"{left} {right_capitalized}"))
+            
+            # Return the best candidate (prefer longer first name for Indian names)
+            if candidates:
+                candidates.sort(key=lambda x: -x[0])  # Prefer later splits
+                return candidates[0][1]
+        
+        # Fallback: return as-is
+        return name
 
     def _parse_multiline_authors(self, lines: list) -> list:
-        """Original multi-line author block parser."""
-        collected_emails = []
-        collected_affiliations = []
-
+        """
+        Smart multi-line author block parser with grouping.
+        Groups author information based on proximity and email anchors.
+        """
+        # ── Group lines into author blocks by blank lines ──
+        blocks = []
+        current_block = []
+        
         for line in lines:
             stripped = line.strip()
             if not stripped:
-                continue
-            emails = RE_EMAIL.findall(stripped)
-            collected_emails.extend(emails)
-            if RE_AFFILIATION_KEYWORDS.search(stripped):
-                collected_affiliations.append(stripped)
-
-        name_lines = []
-        for line in lines:
-            stripped = line.strip()
-            if not stripped:
-                continue
-            if RE_EMAIL.search(stripped):
-                continue
-            if RE_AFFILIATION_KEYWORDS.search(stripped):
-                continue
-            if re.match(r'(?i)^(authors?|title|abstract|keywords?|index\s+terms?|introduction)$', stripped):
-                continue
-            if RE_LOCATION.search(stripped):
-                continue
-            if stripped.count(',') >= 2:
-                continue
-            if re.match(r'^\d+[.)]', stripped):
-                continue
-            words = stripped.split()
-            if (
-                2 <= len(words) <= 4
-                and not re.search(r'\d', stripped)
-                and stripped[0].isupper()
-                and not any(w.endswith(',') for w in words)
-            ):
-                name_lines.append(stripped)
-
+                if current_block:
+                    blocks.append(current_block)
+                    current_block = []
+            else:
+                current_block.append(stripped)
+        
+        if current_block:
+            blocks.append(current_block)
+        
+        # ── Parse each block into an Author object ──
         authors = []
-        for i, name in enumerate(name_lines):
-            author = Author(name=name)
-            if i < len(collected_emails):
-                author.email = collected_emails[i]
-            if collected_affiliations:
-                affil = collected_affiliations[0]
-                if ',' in affil:
-                    parts = affil.split(',', 1)
-                    author.department = parts[0].strip()
-                    author.institution = parts[1].strip()
-                else:
-                    author.institution = affil
-            authors.append(author)
-
-        if not authors and collected_emails:
+        
+        for block in blocks:
+            if not block:
+                continue
+            
+            author = Author()
+            
+            # Step 1: Extract email (anchor point)
+            for line in block:
+                email_match = RE_EMAIL.search(line)
+                if email_match:
+                    author.email = email_match.group(0)
+                    break
+            
+            # Step 2: Extract name, role, department, institution from remaining lines
+            for line in block:
+                if RE_EMAIL.search(line):
+                    continue
+                
+                lower_line = line.lower()
+                
+                # Skip labels and metadata
+                if re.match(r'(?i)^(author|title|abstract|keywords?|index\s+terms?|introduction|mail|email|phone)$', lower_line):
+                    continue
+                if RE_LOCATION.search(line):
+                    continue
+                
+                # --- Detect line type ---
+                is_role_line = any(kw in lower_line for kw in [
+                    'professor', 'dr.', 'dr ', 'dr,',
+                    'associate', 'assistant', 'principal', 'investigator', 'researcher',
+                    'postdoc', 'phd', 'lecturer', 'faculty', 'scholar'
+                ])
+                
+                is_dept_line = any(kw in lower_line for kw in [
+                    'department', 'dept', 'school', 'faculty', 'division', 'lab', 'laboratory'
+                ])
+                
+                is_inst_line = RE_AFFILIATION_KEYWORDS.search(line)
+                
+                # --- Assign to appropriate field ---
+                if is_role_line and not author.role:
+                    author.role = line
+                elif is_dept_line and not author.department:
+                    author.department = line
+                elif is_inst_line and not author.institution:
+                    author.institution = line
+                elif not author.name:
+                    # Try to parse as name (proper capitalization, 2-4 words)
+                    words = line.split()
+                    if (
+                        2 <= len(words) <= 4
+                        and not RE_EMAIL.search(line)
+                        and not re.search(r'\d', line)
+                        and line[0].isupper()
+                        and not is_role_line
+                        and not is_dept_line
+                        and not is_inst_line
+                    ):
+                        author.name = self._fix_name_spacing(line)
+            
+            # Only add if we have at least a name or email
+            if author.name or author.email:
+                authors.append(author)
+        
+        # Fallback: if we got nothing, collect all emails as authors
+        if not authors:
+            collected_emails = []
+            for line in lines:
+                emails = RE_EMAIL.findall(line)
+                collected_emails.extend(emails)
+            
             for email in collected_emails:
                 authors.append(Author(email=email))
+        
         return authors
 
     # ─────────────────────────────
